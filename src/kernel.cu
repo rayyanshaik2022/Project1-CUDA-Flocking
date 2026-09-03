@@ -262,6 +262,72 @@ __global__ void kernUpdateVelocityBruteForce(int N, glm::vec3 *pos,
   // Compute a new velocity based on pos and vel1
   // Clamp the speed
   // Record the new velocity into vel2. Question: why NOT vel1?
+
+  // One thread processes for one boid
+  int index = threadIdx.x + (blockIdx.x * blockDim.x);
+
+  if (index >= N) {
+    return;
+  }
+
+  glm::vec3 perceivedCenter(0.f);
+  int rule1Neighbors = 0;
+
+  glm::vec3 c(0.f);
+
+  glm::vec3 perceivedVelocity(0.f);
+  int rule3Neighbors = 0;
+  
+  float currDist = 0.f;
+
+  for (int i = 0; i < N; i++) {
+    // Skip self
+    if (i == index) {
+      continue;
+    };
+
+    currDist = glm::distance(pos[index], pos[i]);
+
+    // Perceived center for rule 1
+    if (currDist < rule1Distance) {
+      perceivedCenter += pos[i];
+      rule1Neighbors++;
+    }
+
+    // Separation for rule 2
+    if (currDist < rule2Distance) {
+      c -= (pos[i] - pos[index]);
+    }
+
+    // Perceived velocity for rule 3
+    if (currDist < rule3Distance) {
+      perceivedVelocity += vel1[i];
+      rule3Neighbors++;
+    }
+  }
+
+  glm::vec3 newVel(vel1[index]);
+
+  // Apply rule 1
+  if (rule1Neighbors == 1) { rule1Neighbors++; };
+  perceivedCenter /= rule1Neighbors;
+  newVel += (perceivedCenter - pos[index]) * rule1Scale;
+
+  // Apply rule 2
+  newVel += c * rule2Scale;
+
+  // Apply rule 3
+  if (rule3Neighbors == 1) { rule3Neighbors++; };
+  perceivedVelocity /= rule3Neighbors;
+  newVel += perceivedVelocity * rule3Scale;
+
+  float speed = glm::length(newVel);
+  if (speed > maxSpeed) {
+    newVel = glm::normalize(newVel) * maxSpeed;
+  }
+
+  vel2[index] = newVel;
+
 }
 
 /**
@@ -366,6 +432,15 @@ __global__ void kernUpdateVelNeighborSearchCoherent(
 void Boids::stepSimulationNaive(float dt) {
   // TODO-1.2 - use the kernels you wrote to step the simulation forward in time.
   // TODO-1.2 ping-pong the velocity buffers
+
+  // Update velocity -> Update position
+  dim3 fullBlocksPerGrid((numObjects + blockSize - 1) / blockSize);
+
+  kernUpdateVelocityBruteForce<<<fullBlocksPerGrid, blockSize>>>(numObjects, dev_pos, dev_vel1, dev_vel2);
+  kernUpdatePos<<<fullBlocksPerGrid, blockSize>>>(numObjects, dt, dev_pos, dev_vel2);
+
+  // Ping-pong velocity buffers
+  std::swap(dev_vel1, dev_vel2);
 }
 
 void Boids::stepSimulationScatteredGrid(float dt) {
