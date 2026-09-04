@@ -328,17 +328,21 @@ __global__ void kernUpdateVelocityBruteForce(int N, glm::vec3 *pos,
   glm::vec3 newVel(vel1[index]);
 
   // Apply rule 1
-  if (rule1Neighbors == 0) { rule1Neighbors++; };
-  perceivedCenter /= rule1Neighbors;
-  newVel += (perceivedCenter - pos[index]) * rule1Scale;
+  if (rule1Neighbors > 0) {
+    perceivedCenter /= rule1Neighbors;
+    newVel += (perceivedCenter - pos[index]) * rule1Scale;
+  }
+  
 
   // Apply rule 2
   newVel += c * rule2Scale;
 
   // Apply rule 3
-  if (rule3Neighbors == 0) { rule3Neighbors++; };
-  perceivedVelocity /= rule3Neighbors;
-  newVel += perceivedVelocity * rule3Scale;
+  if (rule3Neighbors > 0) {
+    perceivedVelocity /= rule3Neighbors;
+    newVel += perceivedVelocity * rule3Scale;
+  }
+  
 
   float speed = glm::length(newVel);
   if (speed > maxSpeed) {
