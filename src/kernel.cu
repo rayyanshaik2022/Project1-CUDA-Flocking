@@ -309,7 +309,7 @@ __global__ void kernUpdateVelocityBruteForce(int N, glm::vec3 *pos,
   glm::vec3 newVel(vel1[index]);
 
   // Apply rule 1
-  if (rule1Neighbors == 1) { rule1Neighbors++; };
+  if (rule1Neighbors == 0) { rule1Neighbors++; };
   perceivedCenter /= rule1Neighbors;
   newVel += (perceivedCenter - pos[index]) * rule1Scale;
 
@@ -317,7 +317,7 @@ __global__ void kernUpdateVelocityBruteForce(int N, glm::vec3 *pos,
   newVel += c * rule2Scale;
 
   // Apply rule 3
-  if (rule3Neighbors == 1) { rule3Neighbors++; };
+  if (rule3Neighbors == 0) { rule3Neighbors++; };
   perceivedVelocity /= rule3Neighbors;
   newVel += perceivedVelocity * rule3Scale;
 
@@ -372,6 +372,17 @@ __global__ void kernComputeIndices(int N, int gridResolution,
     // - Label each boid with the index of its grid cell.
     // - Set up a parallel array of integer indices as pointers to the actual
     //   boid data in pos and vel1/vel2
+
+  int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (index >= N) {
+    return;
+  }
+
+  indices[index] = index;
+  
+  // Calculate grid indices
+  // Center position
+  glm::vec3 centeredPos = pos[index] - gridMin;
 }
 
 // LOOK-2.1 Consider how this could be useful for indicating that a cell
