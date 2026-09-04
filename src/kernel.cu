@@ -186,6 +186,18 @@ void Boids::initSimulation(int N) {
   gridMinimum.z -= halfGridWidth;
 
   // TODO-2.1 TODO-2.3 - Allocate additional buffers here.
+  cudaMalloc((void**)&dev_particleArrayIndices, N * sizeof(int));
+  checkCUDAErrorWithLine("cudaMalloc dev_particleArrayIndices failed!");
+
+  cudaMalloc((void**)&dev_particleGridIndices, N * sizeof(int));
+  checkCUDAErrorWithLine("cudaMalloc dev_particleGridIndices failed!");
+
+  cudaMalloc((void**)&dev_gridCellStartIndices, N * sizeof(int));
+  checkCUDAErrorWithLine("cudaMalloc dev_gridCellStartIndices failed!");
+
+  cudaMalloc((void**)&dev_gridCellEndIndices, N * sizeof(int));
+  checkCUDAErrorWithLine("cudaMalloc dev_gridCellEndIndices failed!");
+
   cudaDeviceSynchronize();
 }
 
@@ -381,8 +393,17 @@ __global__ void kernComputeIndices(int N, int gridResolution,
   indices[index] = index;
   
   // Calculate grid indices
-  // Center position
+  // Center position at min corner
   glm::vec3 centeredPos = pos[index] - gridMin;
+
+  // Get grid positions
+  int gx = centeredPos.x * inverseCellWidth;
+  int gy = centeredPos.y * inverseCellWidth;
+  int gz = centeredPos.z * inverseCellWidth;
+
+  // Convert grid position "vector" into contiguous, single-value mapping
+  int gridIndex = gridIndex3Dto1D(gx, gy, gz, gridResolution);
+  gridIndices[index] = gridIndex;
 }
 
 // LOOK-2.1 Consider how this could be useful for indicating that a cell
@@ -400,6 +421,22 @@ __global__ void kernIdentifyCellStartEnd(int N, int *particleGridIndices,
   // Identify the start point of each cell in the gridIndices array.
   // This is basically a parallel unrolling of a loop that goes
   // "this index doesn't match the one before it, must be a new cell!"
+  int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (index >= N) {
+    return;
+  }
+
+  int gridIndex = particleGridIndices[index];
+
+  // If boid does not share the same grid cell as the index before it, it must be the start
+  if (index == 0 || gridIndex != particleGridIndices[index - 1]) {
+    gridCellStartIndices[gridIndex] = index;
+  }
+
+  // If boid does not share the same grid cell as the index after it, it must be the end
+  if (index == N - 1 || gridIndex != particleGridIndices[index + 1]) {
+    gridCellEndIndices[gridIndex] = index;
+  }
 }
 
 __global__ void kernUpdateVelNeighborSearchScattered(
@@ -416,6 +453,19 @@ __global__ void kernUpdateVelNeighborSearchScattered(
   // - Access each boid in the cell and compute velocity change from
   //   the boids rules, if this boid is within the neighborhood distance.
   // - Clamp the speed change before putting the new speed in vel2
+
+  int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (index >= N) {
+    return;
+  }
+
+  glm::vec3 centeredPos = pos[index] - gridMin;
+
+  int gx = centeredPos.x * inverseCellWidth;
+  int gy = centeredPos.y * inverseCellWidth;
+  int gz = centeredPos.z * inverseCellWidth;
+
+
 }
 
 __global__ void kernUpdateVelNeighborSearchCoherent(
@@ -467,6 +517,32 @@ void Boids::stepSimulationScatteredGrid(float dt) {
   // - Perform velocity updates using neighbor search
   // - Update positions
   // - Ping-pong buffers as needed
+
+  dim3 fullBlocksPerGrid((numObjects + blockSize - 1) / blockSize);
+
+  kernComputeIndices<<<fullBlocksPerGrid, blockSize>>>(
+    numObjects,
+    gridCellWidth,
+    gridMinimum,
+    gridInverseCellWidth,
+    dev_pos,
+    dev_particleArrayIndices,
+    dev_particleGridIndices
+  );
+
+  thrust::sort_by_key(
+    dev_particleGridIndices,
+    dev_particleGridIndices + numObjects,
+    dev_particleArrayIndices
+  );
+
+  kernIdentifyCellStartEnd<<<fullBlocksPerGrid, blockSize>>>(
+    numObjects,
+    dev_particleGridIndices,
+    dev_gridCellStartIndices,
+    dev_gridCellEndIndices
+  );
+
 }
 
 void Boids::stepSimulationCoherentGrid(float dt) {
@@ -493,6 +569,10 @@ void Boids::endSimulation() {
   cudaFree(dev_pos);
 
   // TODO-2.1 TODO-2.3 - Free any additional buffers here.
+  cudaFree(dev_particleArrayIndices);
+  cudaFree(dev_particleGridIndices);
+  cudaFree(dev_gridCellStartIndices);
+  cudaFree(dev_gridCellEndIndices);
 }
 
 void Boids::unitTest() {
