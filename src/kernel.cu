@@ -176,7 +176,7 @@ void Boids::initSimulation(int N) {
   checkCUDAErrorWithLine("kernGenerateRandomPosArray failed!");
 
   // LOOK-2.1 computing grid params
-  gridCellWidth = std::max(std::max(rule1Distance, rule2Distance), rule3Distance);
+  gridCellWidth = 2.0f * std::max(std::max(rule1Distance, rule2Distance), rule3Distance);
   int halfSideCount = (int)(scene_scale / gridCellWidth) + 1;
   gridSideCount = 2 * halfSideCount;
 
@@ -630,12 +630,12 @@ __global__ void kernUpdateVelNeighborSearchCoherent(
   float currDist = 0.f;
 
   // Only need to iterate through each of the cells in the grid
-  for (int i = -1; i < 2; i++) {
-    for (int j = -1; j < 2; j++) {
-      for (int k = -1; k < 2; k++) {
-        int x = gx + i;
-        int y = gy + j;
-        int z = gz + k;
+  for (int i = 0; i < 2; i++) {
+    for (int j = 0; j < 2; j++) {
+      for (int k = 0; k < 2; k++) {
+        int x = (i == 0) ? gx : nx;
+        int y = (j == 0) ? gy : ny;
+        int z = (k == 0) ? gz : nz;
 
         // Only need cells inside our particle/boid's radius
         if (x < 0 || x >= gridResolution ||
