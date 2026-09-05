@@ -27,7 +27,7 @@
 #define COHERENT_GRID 0
 
 // LOOK-1.2 - change this to adjust particle count in the simulation
-const int N_FOR_VIS = 5000;
+const int N_FOR_VIS = 1000;
 const float DT = 0.2f;
 
 /**
@@ -226,6 +226,13 @@ void initShaders(GLuint * program) {
     double timebase = 0;
     int frame = 0;
 
+    double benchmarkStart = glfwGetTime();
+    int frameCount = 0;
+
+    double benchmarkWarmup = 5.0;
+    double benchmarkEnd = 20.0;
+    bool isBenchmarking = true;
+
     Boids::unitTest(); // LOOK-1.2 We run some basic example code to make sure
                        // your CUDA development setup is ready to go.
 
@@ -264,6 +271,23 @@ void initShaders(GLuint * program) {
 
       glfwSwapBuffers(window);
       #endif
+
+      double benchmarkDuration = glfwGetTime() - benchmarkStart;
+
+      // FPS (Application level) benchmarking
+      // Skip first 5 seconds
+      double totalTime = glfwGetTime() - benchmarkStart;
+      if (isBenchmarking && totalTime >= benchmarkWarmup) {
+        frameCount++;
+
+        if (totalTime >= benchmarkEnd) {
+          double avgFPS = frameCount / (totalTime - benchmarkWarmup);
+
+          std::cout << "Benchmark Results\n  Average FPS: " << avgFPS << std::endl;
+          isBenchmarking = false;
+        }
+      }
+
     }
     glfwDestroyWindow(window);
     glfwTerminate();
